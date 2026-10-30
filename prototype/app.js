@@ -2,6 +2,7 @@
 // Drawing: p5.brush built-in brushes. History: every stroke is recorded as data
 // ({brush, color, weight, layer, seed, segments}); strokes group into versions
 // that close on a pause, a time cap, or a layer add/delete (decisions.md Q1).
+// Past versions are read-only; "Fork from here" starts a new branch (Q2).
 
 const PAPER = "#fbf8f1";
 
@@ -59,6 +60,14 @@ const state = {
   actions: [],         // work that must run inside draw(): closing versions, layer ops
   lastActivity: 0,
   pos: null,           // playhead position; null = live ("now")
+  branches: [],        // {id, name, versions, layers}; state.versions is the current branch's list
+  branchId: null, branchCounter: 0,
+  spare: [],           // recycled layer buffers (each one is a WebGL context, so reuse them)
+  rebuild: [],         // layers to redraw from recorded strokes, one per frame: {layer, strokes}
+  loading: false,      // true while forking / switching branches
+  expanded: true,      // timeline shows every branch's row; collapsed = current branch only
+  rows: [],            // the rows currently on screen, top to bottom: {branch, start, parent}
+  redo: [],            // strokes taken off by undo, most recent last
   preview: { key: null, i: -1, k: 0 },
   playing: false, playTimer: 0,
   demo: true, showHint: true,
@@ -70,9 +79,9 @@ let compositeFb, previewPg, canvasEl;
 
 function setup() {
   // size from the window: setup() can run before the stylesheet has laid out the stage
-  // (64px rail + 232px layers + 48px stage padding; 52px top bar + 96px timeline + 112px stage padding/tray)
-  state.W = Math.floor(Math.min(window.innerWidth - 64 - 232 - 48, 1300));
-  state.H = Math.floor(Math.min(window.innerHeight - 52 - 96 - 112, 860));
+  // (64px rail + 72px brushes + 232px layers + 48px stage padding; 52px top bar + 96px timeline + 32px stage padding)
+  state.W = Math.floor(Math.min(window.innerWidth - 64 - 72 - 232 - 48, 1300));
+  state.H = Math.floor(Math.min(window.innerHeight - 52 - 96 - 32, 860));
   const c = createCanvas(state.W, state.H, WEBGL);
   c.parent("canvas-wrap");
   canvasEl = c.elt;
@@ -83,6 +92,8 @@ function setup() {
   previewPg = createGraphics(state.W, state.H, WEBGL);
 
   addLayer("Sketch", { silent: true });
+  state.branches.push({ id: "B0", name: "main", versions: state.versions, layers: null });
+  state.branchId = "B0";
 
   buildRail();
   buildTray();
@@ -106,7 +117,7 @@ function draw() {
 
   // 1. queued work (closing a version, layer ops). Runs before new segments
   //    are drawn so snapshots contain exactly the strokes that belong to them.
-  if (state.actions.length && state.queue.length === 0) {
+  if (state.actions.length && state.queue.length === 0 && !state.rebuild.length) {
     const acts = state.actions.splice(0);
     acts.forEach((fn) => fn());
   }
@@ -121,7 +132,8 @@ function draw() {
   background(PAPER);
   if (state.pos === null) {
     drawLayers();
-    flushQueue(); // brush calls → active layer, written at end of frame
+    if (state.rebuild.length) rebuildStep(); // brush calls → one rebuilt layer
+    else flushQueue(); // brush calls → active layer, written at end of frame
   } else {
     image(previewPg, -state.W / 2, -state.H / 2, state.W, state.H);
     renderPreview(); // brush calls → preview buffer, written at end of frame
@@ -136,7 +148,7 @@ function makeLayer(name) {
     name,
     visible: true,
     opacity: 1,
-    pg: createGraphics(state.W, state.H, WEBGL),
+    pg: state.spare.pop() || createGraphics(state.W, state.H, WEBGL),
   };
 }
 
@@ -160,7 +172,7 @@ function deleteLayer(id) {
   state.actions.push(() => {
     const idx = state.layers.findIndex((l) => l.id === id);
     const [gone] = state.layers.splice(idx, 1);
-    gone.pg.remove();
+    recycle(gone.pg);
     if (state.activeLayerId === id) state.activeLayerId = state.layers[Math.max(0, idx - 1)].id;
     renderLayers();
     toast(`Deleted "${gone.name}". It's still in the history`);
@@ -169,6 +181,15 @@ function deleteLayer(id) {
 
 function activeLayer() {
   return state.layers.find((l) => l.id === state.activeLayerId);
+}
+
+function recycle(pg) {
+  pg.clear();
+  state.spare.push(pg);
+}
+
+function layerMeta() {
+  return state.layers.map(({ id, name, visible, opacity }) => ({ id, name, visible, opacity }));
 }
 
 function drawLayers() {
@@ -186,6 +207,7 @@ function bindCanvas() {
   canvasEl.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     if (state.pos !== null) return showPastNotice();
+    if (state.loading) return toast("Loading branch…");
     const layer = activeLayer();
     if (!layer.visible) return toast(`"${layer.name}" is hidden`);
     try { canvasEl.setPointerCapture(e.pointerId); } catch {}
@@ -226,6 +248,7 @@ function bindCanvas() {
     delete s.last;
     state.drawing = null;
     const v = state.open;
+    state.redo = [];
     v.strokes.push(s);
     v.tools[s.brush] = (v.tools[s.brush] || 0) + 1;
     v.end = s.t1;
@@ -240,8 +263,11 @@ function bindCanvas() {
 function addSeg(stroke, seg) {
   stroke.segs.push(seg);
   state.queue.push({ stroke, seg });
-  // edit size: mark the grid cells this segment touches
-  const cells = state.open.cells;
+  markCells(state.open.cells, seg);
+}
+
+// edit size: mark the grid cells a segment touches
+function markCells(cells, seg) {
   const steps = Math.max(1, Math.ceil(Math.hypot(seg[2] - seg[0], seg[3] - seg[1]) / 10));
   for (let t = 0; t <= steps; t++) {
     const x = seg[0] + ((seg[2] - seg[0]) * t) / steps;
@@ -300,6 +326,7 @@ function ensureOpenVersion() {
     end: Date.now(),
     closedBy: null,
     snapshot: null,
+    layers: layerMeta(),    // layer stack when the version opened, used to rebuild forks
     isNew: true,
   };
   state.versions.push(state.open);
@@ -328,6 +355,7 @@ function closeVersion(v, reason) {
   }
   v.closedBy = reason;
   v.snapshot = takeSnapshot();
+  state.redo = []; // a closed version is history: undo/redo stop at its boundary
   if (state.open === v) state.open = null;
   v.justClosed = true;
   renderTimeline();
@@ -346,6 +374,58 @@ function takeSnapshot() {
     drawLayers();
   });
   return compositeFb.get();
+}
+
+// ---------------------------------------------------------------- undo / redo
+
+// Undo only reaches strokes in the open version: closed versions are history,
+// and going back to them is what the timeline is for.
+function canUndo() {
+  return state.pos === null && !state.loading && !state.drawing && !!state.open && state.open.strokes.length > 0;
+}
+
+function canRedo() {
+  return state.pos === null && !state.loading && !state.drawing && !!state.open && state.redo.length > 0;
+}
+
+function undo() {
+  if (!canUndo()) return;
+  const v = state.open;
+  const s = v.strokes.pop();
+  state.redo.push(s);
+  if (--v.tools[s.brush] === 0) delete v.tools[s.brush];
+  v.cells = new Set();
+  v.strokes.forEach((st) => st.segs.forEach((seg) => markCells(v.cells, seg)));
+  // pixels can't be un-drawn: clear the stroke's layer and replay what's left on it
+  state.actions.push(() => {
+    const layer = state.layers.find((l) => l.id === s.layerId);
+    if (!layer) return;
+    layer.pg.clear();
+    state.rebuild = state.rebuild.filter((job) => job.layer !== layer); // quick repeat undos: replay once
+    state.rebuild.push({ layer, strokes: state.versions.flatMap((x) => x.strokes).filter((x) => x.layerId === layer.id) });
+  });
+  state.lastActivity = Date.now();
+  renderTimeline();
+}
+
+function redo() {
+  if (!canRedo()) return;
+  const v = state.open;
+  const s = state.redo.pop();
+  v.strokes.push(s);
+  v.tools[s.brush] = (v.tools[s.brush] || 0) + 1;
+  s.seeded = false;
+  s.segs.forEach((seg) => {
+    markCells(v.cells, seg);
+    state.queue.push({ stroke: s, seg });
+  });
+  state.lastActivity = Date.now();
+  renderTimeline();
+}
+
+function updateUndoUI() {
+  document.getElementById("btn-undo").disabled = !canUndo();
+  document.getElementById("btn-redo").disabled = !canRedo();
 }
 
 // ---------------------------------------------------------------- scrubbing
@@ -397,6 +477,7 @@ function setPos(pos, { fromUser } = {}) {
   if (fromUser) stopPlay();
   state.pos = pos;
   updatePastUI();
+  updateUndoUI();
   updatePlayhead();
 }
 
@@ -435,7 +516,118 @@ function stepPlay() {
   scrollPlayheadIntoView();
 }
 
-// ---------------------------------------------------------------- UI: rail, tray, layers
+// ---------------------------------------------------------------- branches
+
+// A branch shares every version before its fork point (the same objects), then
+// has its own. Forking mid-version copies the first k strokes of that version.
+// Entering a branch rebuilds its layers by replaying the recorded strokes.
+
+function currentBranch() {
+  return state.branches.find((b) => b.id === state.branchId);
+}
+
+function forkHere() {
+  if (state.pos === null || state.loading) return;
+  const { i, k } = posToTarget(state.pos);
+  const from = state.versions[i];
+  stopPlay();
+  state.loading = true;
+  queueClose("forked");
+  state.actions.push(() => {
+    const versions = state.versions.slice(0, i);
+    const whole = k === from.strokes.length;
+    if (whole) versions.push(from);
+    else if (k > 0) versions.push(partialVersion(from, k));
+    const b = { id: "B" + ++state.branchCounter, name: "fork " + state.branchCounter, versions, layers: null };
+    state.branches.push(b);
+    state.expanded = true; // show the new row and where it split off
+    enterBranch(b, from.layers);
+    toast(`Started ${b.name} from v${from.n}${whole ? "" : ` · stroke ${k}/${from.strokes.length}`}`);
+  });
+}
+
+function switchBranch(id, pos = null) {
+  if (id === state.branchId || state.loading) return;
+  stopPlay();
+  state.loading = true;
+  queueClose("switched branch");
+  state.actions.push(() => {
+    const b = state.branches.find((x) => x.id === id);
+    enterBranch(b, b.layers, pos);
+  });
+}
+
+function partialVersion(v, k) {
+  const strokes = v.strokes.slice(0, k);
+  const tools = {};
+  const cells = new Set();
+  for (const s of strokes) {
+    tools[s.brush] = (tools[s.brush] || 0) + 1;
+    s.segs.forEach((seg) => markCells(cells, seg));
+  }
+  return {
+    ...v, strokes, tools, cells,
+    end: strokes[k - 1].t1, closedBy: "forked", snapshot: null, closing: false, forkedFrom: v,
+  };
+}
+
+// runs inside draw()'s action phase
+function enterBranch(b, meta, pos = null) {
+  currentBranch().layers = layerMeta();
+  state.branchId = b.id;
+  state.versions = b.versions;
+  state.open = null;
+  state.pos = null;
+  state.redo = [];
+  Object.assign(state.preview, { key: null, i: -1, k: 0 });
+
+  state.layers.forEach((l) => recycle(l.pg));
+  state.layers = meta.map((m) => ({ ...m, pg: state.spare.pop() || createGraphics(state.W, state.H, WEBGL) }));
+  state.activeLayerId = state.layers[state.layers.length - 1].id;
+  const strokes = b.versions.flatMap((v) => v.strokes);
+  state.rebuild = state.layers
+    .map((layer) => ({ layer, strokes: strokes.filter((s) => s.layerId === layer.id) }))
+    .filter((job) => job.strokes.length);
+  // after the rebuilt strokes land: a partial version still needs its snapshot
+  state.actions.push(() => {
+    const last = b.versions[b.versions.length - 1];
+    if (last && !last.snapshot) last.snapshot = takeSnapshot();
+    state.loading = false;
+    if (pos !== null) setPos(pos);
+  });
+
+  renderLayers();
+  renderTimeline();
+}
+
+function rebuildStep() {
+  const { layer, strokes } = state.rebuild.shift();
+  brush.load(layer.pg);
+  for (const s of strokes) {
+    randomSeed(s.seed);
+    for (const seg of s.segs) drawSeg(s, seg);
+  }
+}
+
+// One timeline row per branch. A version is drawn once, in the row of the first
+// branch that has it, so a fork's row starts at the column where it splits off.
+function timelineRows() {
+  const prefix = (a, b) => {
+    let p = 0;
+    while (p < a.versions.length && p < b.versions.length && a.versions[p] === b.versions[p]) p++;
+    return p;
+  };
+  return state.branches.map((b, j) => {
+    let start = 0, parent = -1;
+    for (let k = 0; k < j; k++) {
+      const p = prefix(b, state.branches[k]);
+      if (parent < 0 || p > start) { start = p; parent = k; }
+    }
+    return { branch: b, start, parent };
+  });
+}
+
+// ---------------------------------------------------------------- UI: rail, brushes, layers
 
 function buildRail() {
   const wrap = document.getElementById("swatches");
@@ -502,42 +694,98 @@ const chipPitch = () => {
   return { w: parseFloat(cs.getPropertyValue("--chip-w")), gap: parseFloat(cs.getPropertyValue("--chip-gap")) };
 };
 
+const ROW_H = 56, ROW_GAP = 8;
+
 function renderTimeline() {
   const chips = document.getElementById("chips");
-  const n = state.versions.length;
-  const maxCells = Math.max(1, ...state.versions.map((v) => v.cells.size));
+  const { w, gap } = chipPitch();
+  const pitch = w + gap;
+  const rows = state.expanded ? timelineRows() : [{ branch: currentBranch(), start: 0, parent: -1 }];
+  state.rows = rows;
+  const maxCells = Math.max(1, ...state.branches.flatMap((b) => b.versions.map((v) => v.cells.size)));
   chips.innerHTML = "";
 
-  if (!n) {
-    const el = document.createElement("div");
-    el.className = "chip empty";
-    el.innerHTML = '<span class="chip-label">now</span>';
-    chips.appendChild(el);
-  }
+  rows.forEach(({ branch, start }, r) => {
+    const row = document.createElement("div");
+    row.className = "row" + (branch.id === state.branchId ? " current-row" : "");
+    row.dataset.b = branch.id;
+    row.style.paddingLeft = start * pitch + "px";
+    if (rows.length > 1) row.innerHTML = `<span class="row-name">${branch.name}</span>`;
+    chips.appendChild(row);
 
-  state.versions.forEach((v, i) => {
-    const el = document.createElement("div");
-    const dominant = Object.entries(v.tools).sort((a, b) => b[1] - a[1])[0];
-    el.className = "chip" + (v === state.open ? " open" : "") + (v.justClosed ? " landed" : "");
-    v.justClosed = false;
-    el.dataset.i = i;
-    el.innerHTML =
-      `<div class="meter" style="height:${Math.round((v.cells.size / maxCells) * 100)}%"></div>` +
-      (dominant ? ICONS[dominant[0]] : '<svg viewBox="0 0 32 32"></svg>') +
-      `<span class="chip-label">${v === state.open ? "now" : "v" + v.n}</span>`;
-    el.addEventListener("mouseenter", () => showTooltip(el, v));
-    el.addEventListener("mouseleave", hideTooltip);
-    chips.appendChild(el);
+    if (!branch.versions.length && r === 0) {
+      const el = document.createElement("div");
+      el.className = "chip empty";
+      el.innerHTML = '<span class="chip-label">now</span>';
+      row.appendChild(el);
+    }
+
+    branch.versions.slice(start).forEach((v, j) => {
+      const el = document.createElement("div");
+      const dominant = Object.entries(v.tools).sort((a, b) => b[1] - a[1])[0];
+      el.className = "chip" + (v === state.open ? " open" : "") + (v.justClosed ? " landed" : "");
+      v.justClosed = false;
+      el.dataset.i = start + j;
+      el.version = v;
+      el.innerHTML =
+        `<div class="meter" style="height:${Math.round((v.cells.size / maxCells) * 100)}%"></div>` +
+        (dominant ? ICONS[dominant[0]] : '<svg viewBox="0 0 32 32"></svg>') +
+        `<span class="chip-label">${v === state.open ? "now" : "v" + v.n}</span>`;
+      el.addEventListener("mouseenter", () => showTooltip(el, v));
+      el.addEventListener("mouseleave", hideTooltip);
+      row.appendChild(el);
+    });
   });
+
+  renderConnectors(rows, pitch, w);
 
   document.getElementById("hint").hidden = !(state.showHint && state.versions.filter((v) => v.closedBy).length === 0);
   const closed = state.versions.filter((v) => v.closedBy).length;
   const strokes = state.versions.reduce((a, v) => a + v.strokes.length, 0);
+  const toggle = document.getElementById("btn-rows");
+  toggle.hidden = state.branches.length < 2;
+  toggle.setAttribute("aria-expanded", state.expanded);
+  toggle.textContent = state.expanded ? `▾ ${state.branches.length} branches` : `▸ ${currentBranch().name} only`;
+  toggle.title = state.expanded ? "Collapse to the current branch" : "Show every branch";
+
   document.getElementById("timeline-meta").innerHTML =
+    (rows.length > 1 ? `${currentBranch().name}<br>` : "") +
     `${closed} version${closed === 1 ? "" : "s"}<br>${strokes} stroke${strokes === 1 ? "" : "s"}` +
     (state.open ? '<br><span style="color:var(--red)">● recording</span>' : "");
   updatePlayhead();
   updatePastUI();
+  updateUndoUI();
+  fitCanvas();
+
+  // past 3 rows the area scrolls; keep the current branch's row on screen
+  const sc = document.getElementById("track-scroll");
+  const cur = chips.querySelector(".current-row");
+  if (cur && (cur.offsetTop < sc.scrollTop || cur.offsetTop + ROW_H > sc.scrollTop + sc.clientHeight)) {
+    sc.scrollTop = cur.offsetTop;
+  }
+}
+
+// the line from where a fork splits off down into its row
+function renderConnectors(rows, pitch, w) {
+  const svg = document.getElementById("connectors");
+  const rowY = (r) => r * (ROW_H + ROW_GAP);
+  const chipTop = (ROW_H - 48) / 2;
+  const paths = rows.slice(1).map(({ branch, start, parent }, j) => {
+    const r = j + 1;
+    const y1 = rowY(parent) + chipTop + 48;
+    const first = branch.versions[start];
+    // a mid-version fork (or one from a blank canvas) sits right under its source
+    if (!first || start === 0 || first.forkedFrom) {
+      const x = start * pitch + w / 2;
+      return `M${x} ${y1}V${rowY(r) + chipTop}`;
+    }
+    const x1 = (start - 1) * pitch + w / 2;
+    const ym = rowY(r) + ROW_H / 2;
+    return `M${x1} ${y1}V${ym - 10}Q${x1} ${ym} ${x1 + 10} ${ym}H${start * pitch}`;
+  });
+  const h = rows.length * (ROW_H + ROW_GAP);
+  svg.setAttribute("height", h);
+  svg.innerHTML = paths.map((d) => `<path d="${d}"/>`).join("");
 }
 
 function updatePlayhead() {
@@ -552,15 +800,31 @@ function updatePlayhead() {
     x = i * (w + gap) + (state.pos - i) * w;
   }
   ph.style.left = x + "px";
+  const r = state.rows.findIndex((row) => row.branch.id === state.branchId);
+  ph.style.top = r * (ROW_H + ROW_GAP) + "px";
+  ph.style.height = ROW_H + "px";
 
+  // shared versions sit in an earlier row, but they're still this branch's past
   const viewing = state.pos !== null && n > 0;
   const cur = viewing ? posToTarget(state.pos).i : -1;
   document.querySelectorAll(".chip[data-i]").forEach((el) => {
-    const i = +el.dataset.i;
-    el.classList.toggle("past", viewing && i < cur);
-    el.classList.toggle("current", viewing && i === cur);
+    const i = state.versions.indexOf(el.version);
+    el.classList.toggle("past", viewing && i >= 0 && i < cur);
+    el.classList.toggle("current", viewing && i >= 0 && i === cur);
     el.classList.toggle("future", viewing && i > cur);
   });
+}
+
+// the canvas keeps its pixel size; CSS scales it down when fork rows make the timeline taller
+function fitCanvas() {
+  if (!canvasEl) return;
+  const st = document.getElementById("stage");
+  const cs = getComputedStyle(st);
+  const availW = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const k = Math.min(1, availW / state.W, availH / state.H);
+  canvasEl.style.width = state.W * k + "px";
+  canvasEl.style.height = state.H * k + "px";
 }
 
 function scrollPlayheadIntoView() {
@@ -583,22 +847,35 @@ function updatePastUI() {
   const { i, k } = posToTarget(state.pos);
   const v = state.versions[i];
   const when = new Date(k > 0 ? v.strokes[k - 1].t1 : v.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
-  document.getElementById("past-text").textContent = `Viewing v${v.n} · stroke ${k}/${v.strokes.length} · ${when}`;
+  const branch = state.branches.length > 1 ? currentBranch().name + " · " : "";
+  document.getElementById("past-text").textContent = `Viewing ${branch}v${v.n} · stroke ${k}/${v.strokes.length} · ${when}`;
 }
 
 function bindTimeline() {
   const track = document.getElementById("track");
+  const at = (e) => {
+    const { w, gap } = chipPitch();
+    const r = document.getElementById("chips").getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const i = Math.floor(x / (w + gap));
+    const f = Math.max(0, Math.min(1, (x - i * (w + gap)) / w));
+    const row = Math.floor((e.clientY - r.top) / (ROW_H + ROW_GAP));
+    return { pos: Math.max(0, i + f), i, row };
+  };
   const scrubTo = (e) => {
     const n = state.versions.length;
     if (!n) return;
-    const { w, gap } = chipPitch();
-    const x = e.clientX - document.getElementById("chips").getBoundingClientRect().left;
-    const i = Math.floor(x / (w + gap));
-    if (i >= n) return setPos(null, { fromUser: true });
-    const f = Math.max(0, Math.min(1, (x - i * (w + gap)) / w));
-    setPos(Math.max(0, i + f), { fromUser: true });
+    const { pos, i } = at(e);
+    setPos(i >= n ? null : pos, { fromUser: true });
   };
   track.addEventListener("pointerdown", (e) => {
+    const { pos, i, row } = at(e);
+    const b = state.rows[row]?.branch;
+    if (b && b.id !== state.branchId) {
+      // tapping another branch's row moves to that branch, at the tapped version
+      hideTooltip();
+      return switchBranch(b.id, i >= b.versions.length ? null : pos);
+    }
     if (!state.versions.length) return;
     try { track.setPointerCapture(e.pointerId); } catch {}
     track.classList.add("dragging");
@@ -609,6 +886,7 @@ function bindTimeline() {
   const stopDrag = () => track.classList.remove("dragging");
   track.addEventListener("pointerup", stopDrag);
   track.addEventListener("pointercancel", stopDrag);
+  window.addEventListener("resize", fitCanvas);
 
   document.getElementById("t-start").onclick = () => state.versions.length && setPos(0, { fromUser: true });
   document.getElementById("t-prev").onclick = () => versionBoundary(-1);
@@ -616,9 +894,15 @@ function bindTimeline() {
   document.getElementById("t-now").onclick = () => setPos(null, { fromUser: true });
   document.getElementById("t-play").onclick = togglePlay;
   document.getElementById("btn-now").onclick = () => setPos(null, { fromUser: true });
+  document.getElementById("btn-fork").onclick = forkHere;
+  document.getElementById("notice-fork").onclick = forkHere;
 
   window.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT") return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      return e.shiftKey ? redo() : undo();
+    }
     if (e.key === "ArrowLeft") versionBoundary(-1);
     else if (e.key === "ArrowRight") versionBoundary(1);
     else if (e.key === "Escape") setPos(null, { fromUser: true });
@@ -639,7 +923,8 @@ function showTooltip(el, v) {
     `<b>${v === state.open ? "now (recording)" : "v" + v.n}</b> · ${new Date(v.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}<br>` +
     `${v.strokes.length} strokes · ${mins}:${secs} · ${pct}% of canvas<br>` +
     `tools: ${tools}${sizes ? `<br>sizes: ${sizes}` : ""}` +
-    (v.closedBy ? `<br>closed by: <b>${v.closedBy}</b>` : "");
+    (v.closedBy ? `<br>closed by: <b>${v.closedBy}</b>` : "") +
+    (v.forkedFrom ? `<br>first ${v.strokes.length} of v${v.n}'s ${v.forkedFrom.strokes.length} strokes` : "");
   tip.style.left = r.left + r.width / 2 + "px";
   tip.style.top = r.top - 8 + "px";
   tip.hidden = false;
@@ -653,6 +938,9 @@ function hideTooltip() {
 
 function bindTopbar() {
   document.getElementById("btn-add-layer").onclick = () => addLayer();
+  document.getElementById("btn-undo").onclick = undo;
+  document.getElementById("btn-rows").onclick = () => { state.expanded = !state.expanded; renderTimeline(); };
+  document.getElementById("btn-redo").onclick = redo;
   document.getElementById("opt-demo").onchange = (e) => { state.demo = e.target.checked; };
   document.getElementById("opt-hint").onchange = (e) => { state.showHint = e.target.checked; renderTimeline(); };
   document.getElementById("btn-export").onclick = () => {

@@ -24,31 +24,35 @@
         <label><input type="checkbox" id="opt-hint" checked> Show empty-state hint</label>
         <p class="note">Real rules: a version closes after a 90s pause, 10 min of drawing, or a layer add/delete.</p>
       </details>
-      <button class="ghost" id="btn-history" disabled title="History page: next mockup">History</button>
       <button class="solid" id="btn-export">Export PNG</button>
     </div>
   </header>
 
   <main class="workspace">
+    <aside class="brushes" id="tray" aria-label="Brushes"></aside>
+
     <aside class="rail">
       <div class="rail-label">color</div>
       <div class="swatches" id="swatches"></div>
       <div class="rail-label">size</div>
       <input type="range" id="size" min="0.4" max="3" step="0.1" value="1" class="vslider" aria-label="Brush size">
       <div class="size-readout" id="size-readout">1.0</div>
+      <div class="rail-gap"></div>
+      <button class="rail-btn" id="btn-undo" title="Undo (⌘Z)" disabled>↶</button>
+      <button class="rail-btn" id="btn-redo" title="Redo (⇧⌘Z)" disabled>↷</button>
     </aside>
 
     <section class="stage" id="stage">
       <div class="past-banner" id="past-banner" hidden>
         <span class="rec-dot past"></span>
         <span id="past-text">Viewing v1</span>
+        <button id="btn-fork" class="fork">Fork from here</button>
         <button id="btn-now">Back to now ⏭</button>
       </div>
       <div class="past-notice" id="past-notice" hidden>
-        You're viewing a past version. What happens when you draw here is still undecided (<b>auto-fork</b> vs. <b>read-only + restore</b>). Go back to now to keep drawing.
+        Past versions are read-only. <button id="notice-fork" class="fork">Fork from here</button> to draw from this point on a new branch, or go back to now.
       </div>
       <div class="canvas-wrap" id="canvas-wrap"></div>
-      <div class="tray" id="tray"></div>
     </section>
 
     <aside class="layers">
@@ -71,12 +75,16 @@
     </div>
     <div class="track-scroll" id="track-scroll">
       <div class="track" id="track">
+        <svg class="connectors" id="connectors" width="100%"></svg>
         <div class="chips" id="chips"></div>
         <div class="playhead" id="playhead"><div class="playhead-grip"></div></div>
       </div>
       <div class="hint" id="hint">Your process is being saved as you draw. Drag here later to rewind.</div>
     </div>
-    <div class="timeline-meta" id="timeline-meta">0 versions</div>
+    <div class="timeline-side">
+      <button class="rows-toggle" id="btn-rows" hidden aria-expanded="true"></button>
+      <div class="timeline-meta" id="timeline-meta">0 versions</div>
+    </div>
   </footer>
 
   <div class="tooltip" id="tooltip" hidden></div>

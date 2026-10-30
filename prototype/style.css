@@ -25,7 +25,7 @@ body {
   color: var(--ink);
   font-family: var(--sans);
   display: grid;
-  grid-template-rows: 52px 1fr 96px;
+  grid-template-rows: 52px minmax(0, 1fr) auto;
   overflow: hidden;
   user-select: none;
 }
@@ -67,7 +67,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .demo em { color: var(--gray); font-style: normal; }
 
 /* ---------- workspace ---------- */
-.workspace { display: grid; grid-template-columns: 64px 1fr 232px; min-height: 0; }
+.workspace { display: grid; grid-template-columns: 72px 64px 1fr 232px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
 
 .rail {
   border-right: 1.5px solid var(--ink); background: var(--paper);
@@ -83,8 +83,20 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .swatch.active { outline: 2px solid var(--ink); outline-offset: 2px; }
 .vslider { writing-mode: vertical-lr; direction: rtl; height: 140px; width: 22px; accent-color: var(--ink); }
 .size-readout { font-family: var(--mono); font-size: 11px; }
+.rail-gap { flex: 1; }
+.rail-btn {
+  width: 40px; height: 40px; border: 1.5px solid var(--line); border-radius: 50%;
+  background: var(--paper); color: var(--ink); font-size: 18px; line-height: 1;
+}
+.rail-btn:hover:not(:disabled) { border-color: var(--ink); }
+.rail-btn:disabled { color: var(--gray); border-style: dashed; cursor: not-allowed; }
 
-.stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 16px 24px 76px; }
+.brushes {
+  border-right: 1.5px solid var(--ink); background: var(--paper);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 0; overflow-y: auto;
+}
+
+.stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 16px 24px; }
 .canvas-wrap { position: relative; line-height: 0; }
 .canvas-wrap canvas {
   border-radius: 4px; box-shadow: 0 1px 0 var(--ink), 0 10px 30px rgba(60, 40, 10, .12);
@@ -99,17 +111,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   font-family: var(--mono); font-size: 12px; white-space: nowrap;
 }
 .past-banner button { background: var(--orange); border: none; color: var(--ink); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
+.past-banner button.fork, .past-notice button.fork { background: var(--paper); color: var(--ink); border: none; border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
+.past-notice button.fork { border: 1.5px solid var(--ink); font-family: var(--sans); }
 .past-notice {
   position: absolute; top: 56px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 440px;
   background: var(--paper); border: 1.5px solid var(--orange); border-radius: 10px; padding: 10px 14px;
   font-size: 13px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0,0,0,.1);
 }
 
-.tray {
-  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 4px; padding: 6px; background: var(--paper);
-  border: 1.5px solid var(--ink); border-radius: 14px;
-}
 .tool {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   width: 58px; padding: 6px 0 4px; border: none; background: transparent; border-radius: 9px;
@@ -140,7 +149,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 /* ---------- timeline ---------- */
 .timeline {
   border-top: 1.5px solid var(--ink); background: var(--paper);
-  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 0 16px;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 12px 16px; min-height: 96px;
 }
 .transport { display: flex; gap: 2px; }
 .transport button {
@@ -151,15 +160,24 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .transport .play:hover { background: var(--green); border-color: var(--green); }
 
 .track-scroll {
-  position: relative; overflow-x: auto; overflow-y: hidden; height: 72px;
-  display: flex; align-items: center; gap: 14px; padding: 0 10px;
-  background:
-    repeating-linear-gradient(90deg, transparent 0 calc(var(--chip-w) + var(--chip-gap) - 1px), rgba(0,0,0,.04) 0 calc(var(--chip-w) + var(--chip-gap)));
-  border-radius: 10px; border: 1.5px solid var(--line);
+  position: relative; overflow: auto; max-height: 184px; /* main + 2 fork rows (3 × 56 + 2 × 8), then scroll */
+  display: flex; align-items: flex-start; gap: 14px;
   scrollbar-width: thin;
 }
-.track { position: relative; height: 56px; display: flex; align-items: center; flex: none; cursor: ew-resize; touch-action: none; }
-.chips { display: flex; gap: var(--chip-gap); }
+.track { position: relative; flex: 1 0 auto; min-width: 100%; cursor: ew-resize; touch-action: none; }
+.chips { display: flex; flex-direction: column; gap: 8px; min-width: 100%; }
+/* one strip per branch; padding-left puts a fork's first version under its split point */
+.row {
+  position: relative; height: 56px; display: flex; align-items: center; gap: var(--chip-gap);
+  box-sizing: border-box; min-width: 100%; width: max-content; padding-right: 64px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--chip-w) + var(--chip-gap) - 1px), rgba(0,0,0,.04) 0 calc(var(--chip-w) + var(--chip-gap)));
+  border-radius: 10px; border: 1.5px solid var(--line); background-origin: border-box;
+}
+.row.current-row { border-color: var(--ink-2); }
+.row-name { position: absolute; right: 8px; top: 4px; font-family: var(--mono); font-size: 10px; color: var(--ink-2); pointer-events: none; }
+.connectors { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; overflow: visible; }
+.connectors path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .chip {
   position: relative; width: var(--chip-w); height: 48px; border: 1.5px solid var(--ink); border-radius: 7px;
   background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
@@ -181,7 +199,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @keyframes pulse { 50% { opacity: .25; } }
 
 .playhead {
-  position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--orange);
+  position: absolute; top: 0; height: 56px; width: 2px; margin-left: -1px; background: var(--orange);
   pointer-events: none; z-index: 3; transition: left .06s linear;
 }
 .playhead-grip {
@@ -192,6 +210,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 .hint { font-family: var(--mono); font-size: 11px; color: var(--ink-2); white-space: nowrap; display: flex; align-items: center; gap: 8px; }
 .hint::before { content: "←"; color: var(--orange); font-weight: 700; }
+.timeline-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.rows-toggle {
+  font-family: var(--mono); font-size: 11px; color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--ink); border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
+.rows-toggle:hover { background: var(--cream); }
 .timeline-meta { font-family: var(--mono); font-size: 11px; color: var(--gray); text-align: right; min-width: 110px; line-height: 1.5; }
 
 /* ---------- floating ---------- */

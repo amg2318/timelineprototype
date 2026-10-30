@@ -5,20 +5,26 @@ Each entry: the question, options we weighed, what we chose, and why. These doub
 
 ## Open items
 
-**Ask Ajia & Isabella**
-- [ ] Drawing on a past version: auto-fork, or read-only until "Fork from here"? (Q2)
-- [ ] Onion-skin overlay when previewing past versions? (Q2)
-- [ ] Instead of a hint on the empty timeline, should a tutorial popup explain the timeline the first time someone opens a project? (Q2)
-- [ ] How do you compare two versions on the history page: side by side, a before/after slider, or onion skin? Linked to the onion-skin question above (H7)
-- [ ] Which versions get full thumbnails on the history graph? Tiffany leans toward artist marks, for agency and personalization. If marks only, what's the fallback when there are none? (H4)
+**Answered by Ajia (2026-10-29)**
+- [x] Drawing on a past version: **read-only until "Fork from here"** (Q2)
+- [x] Onion-skin overlay: **no**. Comparing is side by side (H7; where it lives is open after Q7)
+- [x] Tutorial popup: **yes, a first-run popup** that points at the timeline (Q2)
+- [x] Compare two versions: **side by side** (H7)
+- [x] Key moments: **artist marks, with an automatic fallback** (H4). Marks are kept (Q3)
+
+**Still open**
+- [ ] First-run popup: what it says, and when it goes away (Q2)
+- [ ] No history page (Q7): where do the per-layer brush info (use case 1), Mark, Export image, and side-by-side compare go now?
+- [ ] Key-moment thumbnails (marks + fallback, H4): do they still exist without the history page, e.g. on the timeline rows?
+- [ ] Fallback key moments: which automatic ones exactly (H4)
+- [ ] Undo stops at the last version boundary (P1). OK, or should undo be able to reach into closed versions?
 
 **Prototype placeholders (decide, then update `prototype/`)**
-- [ ] Drawing on a past version is blocked, with a notice that the behavior is undecided (auto-fork vs. read-only + restore)
+- [x] ~~Drawing on a past version is blocked~~. Built read-only + "Fork from here", plus a branch picker (P1)
 - [ ] Scrubbing shows a flattened image: past versions ignore layer order, visibility, and opacity, and a deleted layer stays visible in the version where it was deleted
 
 **TBD**
 - [ ] Main storytelling export: timelapse with chapters, a process board, or something else? (Q3)
-- [ ] Manual "marks" on versions (from Ajia's sketch): keep them? They tie into chaptered timelapses (Q3)
 
 ---
 
@@ -68,6 +74,8 @@ These are captured per version as **metadata** — shown in the history UI, neve
 
 ### Part 1 — Two surfaces
 
+> **Superseded 2026-10-29 (Q7):** there is no separate history page. The timeline bar on the canvas page is the only history surface, and it shows forks as extra rows.
+
 1. **Timeline bar on the canvas page** (inspired by Fusion 360's bottom timeline). Always visible under the drawing; drag a playhead forwards/backwards through the process without leaving the canvas.
 2. **A separate, detailed history page** for deeper browsing (structure: see part 2).
 
@@ -77,7 +85,7 @@ These are captured per version as **metadata** — shown in the history UI, neve
 - Segments = versions (from Q1). Each shows icons for the tools used (Q1 metadata), like Fusion's feature icons.
 - Edit size can show as segment intensity/height.
 - Because every stroke is recorded, dragging *within* a segment scrubs stroke-by-stroke, so it feels smooth rather than jumping between versions.
-- The bar is linear, so it shows **the current branch only**. Fork points get a small notch; branches themselves live on the detail page.
+- ~~The bar is linear, so it shows **the current branch only**. Fork points get a small notch; branches themselves live on the detail page.~~ Superseded by Q7: each branch is its own row.
 
 **Decided: Segment width = equal.**
 
@@ -123,9 +131,9 @@ These are captured per version as **metadata** — shown in the history UI, neve
 
 **Decided: No hint.** We mocked up a one-line hint ("Your process is being saved. Drag here later to rewind.") and didn't like it. The empty bar stays as it is, like Fusion's.
 
-**⏸ Tabled — ask Ajia & Isabella:** should a **tutorial popup** explain the timeline instead, for example the first time someone opens a project?
+**Decided (2026-10-29, Ajia): a first-run tutorial popup.** One short card points at the timeline the first time someone opens a project. *Still open:* its wording, and whether it closes on tap, on the first stroke, or both.
 
-**⏸ Tabled — ask Ajia & Isabella:** should we add an **onion-skin** overlay (the current version faintly on top of the past one) to the canvas preview, either as a toggle or by default?
+**Decided (2026-10-29, Ajia): no onion skin.** The canvas preview shows the past version alone. Comparing happens side by side (H7). Where that lives is open now that the history page is gone (Q7).
 
 ### Part 2 — Detail page structure: layers or forks as rows?
 
@@ -151,11 +159,15 @@ fork 1      ●──●──● (alt background)
 
 **Why:** The timeline bar already tells the linear story, so the detail page should show branching exploration. Most projects never fork, so the default stays a clean single line.
 
-### ⏸ Tabled — ask Ajia & Isabella
+### Drawing on a past version
 
-What happens if you **draw while the playhead is rolled back**?
+**Decided (2026-10-29, Ajia): read-only + "Fork from here."** Past versions are view-only. Trying to draw shows a notice with a **Fork from here** button, and the same button sits in the past-version banner. Forking starts a new branch at the playhead (mid-version too, down to the stroke), and the canvas switches to it.
 
-Shortlist (Tiffany is OK with either):
+**Why:** forks stay deliberate, so the history graph only shows branches the artist meant to make. The extra tap is a small cost next to accidental branches.
+
+**Note:** Q2 proposed dimming the canvas, but Q6 rules out opacity for state, so the prototype keeps the orange ring and the "not allowed" cursor.
+
+Shortlist we chose from:
 - **Auto-fork:** drawing on an old version quietly starts a new branch from there, with a toast like "Started a new branch from v3." Nothing is lost, and forks appear naturally. Risk: branches the artist didn't mean to create.
 - **Read-only + Restore:** past versions are view-only (canvas dimmed) until you tap "Fork from here." More explicit, but it adds a step and stops the artist mid-stroke.
 
@@ -171,6 +183,8 @@ Ruled out:
 1. **Timelapse** video
 2. **Branch version as an image** (a still of any version/fork)
 3. **Final image**
+
+**Decided (2026-10-29): manual marks are kept** (H4), so chaptered timelapses can use them.
 
 **⏸ TBD:** which one is the *main* storytelling output. Ideas we discussed:
 - **Timelapse with chapters:** pauses briefly at key moments (marked versions, forks, new layers) with a short caption like "tried 3 backgrounds." A format people already post, plus Rewind's reflection. Ajia's manual marks would fit here.
@@ -294,7 +308,38 @@ Ruled out:
 
 ---
 
+## Q7. No history page: the timeline holds everything
+
+**Decided:** 2026-10-29 (Ajia). **Remove the history page. The timeline stays on the drawing page and shows forks as separate rows.** This replaces Q2's two surfaces and the H1–H7 history page decisions below, which stay here as exploration.
+
+```
+│ ▢v1 ▢v2 ▢v3 ▢v4              main   │
+│   ╰─▢v2 ▢v3                 fork 1  │
+```
+
+- **One row per branch**, with time running left to right like the main row. A fork's row starts under the column where it split off, and a line connects it to the version it came from. Shared versions are drawn only once, in the row they started in.
+- **Mid-version forks** sit right under the version they were cut from, joined by a straight line.
+- **The playhead sits in the current branch's row.** Tapping a version in another row switches to that branch, at that version.
+- **The bar grows a row per fork**: the main row plus two fork rows, then the row area scrolls (2026-10-29). The canvas scales down to make room.
+- **Expand / collapse (2026-10-29):** once there's a fork, a toggle by the bar switches between every branch's row ("▾ 3 branches") and only the current branch's row ("▸ fork 1 only"), with all of its history in that one row. Forking expands it, so you see where the new row split off. The bar itself never hides, so it stays "always visible" (Q2, Q4).
+- **Most projects never fork**, so the bar usually stays a single row, the same as before.
+
+**Why:** branches live where the drawing is, so artists don't have to open a second screen to see or use them.
+
+**Consequences:**
+- H1's two use cases still stand. Use case 2 (variations) is now fully on the canvas page: Fork from here, plus the rows.
+- Still open: where these go without the history page:
+  - use case 1 (H5's per-layer brush info)
+  - H6's actions (Mark, Export image)
+  - H7's side-by-side compare
+  - H4's key-moment thumbnails
+- Q4's "⤢ Open history" button is gone.
+
+---
+
 ## H1. What is the history page for?
+
+> **H1–H7 superseded 2026-10-29 by Q7 (no history page).** Kept as exploration; see Q7 for what's still open.
 
 **Decided:** 2026-10-17.
 
@@ -362,8 +407,8 @@ Ruled out:
 ## H6. Actions on a selected version
 
 **Decided:** 2026-10-17.
-- **Continue from here:** return to drawing starting from this version (use case 2, trying variations). *Provisional:* whether this creates a fork automatically or goes through a "Fork from here" button depends on the tabled question about drawing on a past version.
-- **Mark:** make this version a key moment, so it gets a full thumbnail. *Provisional:* depends on whether marks exist (tabled, H4 / Q3).
+- **Fork from here:** return to drawing on a new branch that starts at this version (use case 2, trying variations). The same action as on the canvas page (Q2, read-only + fork).
+- **Mark:** make this version a key moment, so it gets a full thumbnail (H4).
 - **Export image:** save this version as an image (Q3's "branch version as an image").
 
 **Not chosen for now:**
@@ -374,7 +419,9 @@ Ruled out:
 
 ## H7. Comparing two versions
 
-**⏸ Tabled — ask Ajia & Isabella.** Options: side by side, a before/after slider, or onion skin. Linked to the tabled onion-skin question for the canvas preview (Q2).
+**Decided (2026-10-29, Ajia): side by side.** Two previews next to each other on the history page. We rejected a before/after slider, and onion skin was ruled out (Q2).
+
+**Still open:** how the artist picks the second version (e.g. a "Compare" action in the selected-version panel, then tapping another version on the graph).
 
 ---
 
@@ -401,9 +448,9 @@ Ruled out:
 | D. Zoom in to see thumbnails | Flexible, but hardest to build and to discover |
 | **E. Crop thumbnails to what changed** | ✅ Shows what you did in that version. Loses the whole-piece context, so it's used for in-between versions only |
 
-**⏸ Tabled — ask Ajia & Isabella: what counts as a key moment.** Tiffany is leaning toward **artist marks**: the artist chooses which versions become thumbnails, which gives them agency and makes the story their own. This ties in with the TBD question on whether marks exist (Q3).
-- Other options: fork points and branch ends, the first version of each session, big changes (edit size above a set amount).
-- **If we go with marks only:** a project with no marks would have no thumbnails at all. A fallback could be needed, e.g. always show the latest version of each branch.
+**Decided (2026-10-29, Ajia): artist marks, with an automatic fallback.** The artist chooses which versions become thumbnails, which gives them agency and makes the story their own. So marks exist (Q3), and H6's "Mark" action is no longer provisional.
+- **Fallback:** without it, a project with no marks would have no thumbnails. Automatic key moments fill in. Candidates: the latest version of each branch, fork points, the first version of each session, big changes (edit size above a set amount).
+- **Still open:** which of these candidates to use, and whether the fallback shows only when there are no marks or alongside them.
 
 ---
 
@@ -448,4 +495,8 @@ Then open http://localhost:5173. In Claude Code, the `prototype` entry in `.clau
 - **Versions** close after a pause, a time cap, or a layer add/delete. Under **⚙ Mock settings**, "demo timing" shortens these to a 4s pause and a 30s cap, so you can see it working quickly.
 - **Scrubbing** moves stroke by stroke inside a version, and the past is shown full-size on the canvas with a "Viewing v3 · stroke 4/8 · Back to now" banner (Q2). ▶ plays the whole process as a timelapse.
 - **Empty state:** the bar is always visible. The hint can be turned on or off in Mock settings, so both versions can be compared (Q2).
-- **Not built:** pan/zoom, eraser, undo, saving between reloads, the projects page, the history page. Export saves only the final PNG.
+- **Tool layout (2026-10-29, Ajia):** brushes moved from the bottom tray into a vertical column on the far left edge, with the color/size rail to its right. Undo and redo buttons sit at the bottom of the rail (also ⌘Z / ⇧⌘Z).
+- **Undo scope (working choice):** undo and redo only reach strokes in the version that's still recording. Once a version closes (pause, time cap, layer change), it's history, and you rewind on the timeline instead. Otherwise undo would quietly rewrite saved versions. Undone strokes aren't recorded. Undo works by clearing the stroke's layer and replaying the strokes left on it.
+- **Fork rows (2026-10-29, Q7):** each branch is its own row on the bar, connected to its fork point. Tapping another row switches branches. This replaced the fork notch and the branch picker, and the History button is gone.
+- **Read-only past + forking (2026-10-29):** drawing on a past version shows a notice. **Fork from here** (in the notice or the banner) starts a new branch at the playhead, down to the stroke. The new branch shares the earlier versions, and its layers are rebuilt by replaying recorded strokes (one layer per frame, per T1's gotchas). 
+- **Not built:** pan/zoom, eraser, saving between reloads, the projects page, the first-run popup, marks. Export saves only the final PNG.

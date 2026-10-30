@@ -18,13 +18,14 @@ Inventory of everything on the canvas page. Layout: floating tools and layers ov
 - **Export menu:** three options: timelapse, branch version as an image, final image
 
 ## 4. Side bar / tool rail (floating, left)
-- **Brush button**, one per brush (5–6 total). States: default, hover, selected
+Two vertical columns: the brush column against the left edge of the screen, then color, size, and undo/redo to its right.
+- **Brush column:** brush buttons stacked vertically, one per brush (5–6 total). States: default, hover, selected
 - **Eraser button**, with the same states
 - **Color swatch:** shows the current color and opens the color picker
 - **Color picker popover:** color field, hue slider, recent colors
 - **Size slider:** vertical, with a value readout
 - **Opacity slider:** vertical, with a value readout
-- **Undo / redo buttons** *(optional; may be covered by the timeline)*
+- **Undo / redo buttons:** below the size slider. Disabled (dashed) when there's nothing to undo in the current version, or while viewing the past
 
 ## 5. Layers panel (floating, right)
 - **Panel header:** "Layers" title, add-layer button, and a button to collapse the panel
@@ -44,13 +45,17 @@ Inventory of everything on the canvas page. Layout: floating tools and layers ov
 - **Playhead:** a draggable line or handle
 - **Playhead label** (decisions.md Q5): combines the tooltip and the past-version banner. Information only: "v3 · Oct 17 · 8 min · +12%." Shown above the playhead whenever it's on a past version. On desktop, hovering a segment shows the same label in gray as a preview.
 - **Back to now button:** shown only while viewing the past. For now it floats above the bar on the right *(working choice, not final)*.
-- **History button:** opens the history page
+- **Branch row:** one strip per branch (decisions.md Q7). A fork's row starts under its split point and shows the branch name. The current branch's row has a darker border
+- **Fork connector:** the line from the version a fork came from down into the fork's row
+- **Rows toggle:** shown once there's a fork. Expanded shows every branch's row; collapsed shows only the current branch's. Past main + 2 fork rows, the row area scrolls
 - **Scrolling:** what the ends of the bar look like when the history is too long to fit
 
 ## 7. Messages and overlays
 - **Past-version banner:** merged into the timeline's playhead label (see 6)
-- **Toast:** "Started a new branch from v3" *(only if we go with auto-fork, which is tabled)*
-- **Fork from here button** *(only if we go with read-only + restore, also tabled)*
+- **Read-only notice:** shown when the artist tries to draw on a past version, with a Fork from here button (decisions.md Q2)
+- **Fork from here button:** in the read-only notice, and next to the playhead label while viewing the past
+- **Toast:** "Started fork 1 from v3," shown after forking
+- **First-run popup:** one card pointing at the timeline the first time a project opens *(wording TBD)*
 
 ## 8. Shared pieces (used by everything above)
 - **Icon button:** the base for tool, layer, and timeline buttons
