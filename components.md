@@ -28,13 +28,13 @@ Two vertical columns: the brush column against the left edge of the screen, then
 - **Undo / redo buttons:** below the size slider. Disabled (dashed) when there's nothing to undo in the current version, or while viewing the past
 
 ## 5. Layers panel (floating, right)
-- **Panel header:** "Layers" title, add-layer button, and a button to collapse the panel
+- **Panel header:** "Layers" title and add-layer button. The top bar's layers button collapses the panel
+- **Group card:** a named group holding layer rows, with its own show/hide and swipe actions (decisions.md T2)
 - **Layer row**
   - Thumbnail
   - Name (editable)
-  - Show/hide toggle (eye icon)
-  - Opacity slider (in the row or when the row is expanded)
-  - Delete button
+  - Show/hide toggle (checkbox)
+  - Swipe left for Group, Duplicate, and Delete; swipe right to multi-select; hold and drag to reorder (decisions.md T2)
   - States: default, active (selected), hidden (dimmed, eye closed), hover
 - **Collapsed panel:** a small chip showing the layers icon and how many layers there are
 
@@ -60,7 +60,7 @@ Two vertical columns: the brush column against the left edge of the screen, then
 ## 8. Shared pieces (used by everything above)
 - **Icon button:** the base for tool, layer, and timeline buttons
 - **Floating panel:** the shared container style for the rail, layers panel, timeline, and chips
-- **Slider:** used for size, opacity, and layer opacity
+- **Slider:** used for size and opacity
 - **Tooltip / popover:** one shared style
-- **Icons:** brushes, eraser, eye open/closed, trash, plus, play/pause, branch, history, export, arrow
+- **Icons:** brushes, eraser, checkbox, plus, play/pause, branch, history, export, arrow
 - **Tokens:** colors, type, corner radius, spacing

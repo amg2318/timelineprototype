@@ -18,10 +18,13 @@ Each entry: the question, options we weighed, what we chose, and why. These doub
 - [ ] Key-moment thumbnails (marks + fallback, H4): do they still exist without the history page, e.g. on the timeline rows?
 - [ ] Fallback key moments: which automatic ones exactly (H4)
 - [ ] Undo stops at the last version boundary (P1). OK, or should undo be able to reach into closed versions?
+- [ ] Layer reorder, visibility, and grouping can't be undone (T2). The palette prototype could undo them, but Rewind's undo only covers strokes. OK?
+- [ ] Duplicating a layer or group and deleting a group close the version, like adding or deleting a layer (T2, working choice). OK?
 
-**Prototype placeholders (decide, then update `prototype/`)**
+**Prototype placeholders (decide, then update the prototype)**
 - [x] ~~Drawing on a past version is blocked~~. Built read-only + "Fork from here", plus a branch picker (P1)
-- [ ] Scrubbing shows a flattened image: past versions ignore layer order, visibility, and opacity, and a deleted layer stays visible in the version where it was deleted
+- [x] ~~Scrubbing shows a flattened image~~. Past versions now keep their own layer order and visibility, and a deleted layer is gone after its version (T2)
+- [ ] While viewing the past, the layers panel still shows the live layers and thumbnails, not the viewed version's
 
 **TBD**
 - [ ] Main storytelling export: timelapse with chapters, a process board, or something else? (Q3)
@@ -456,6 +459,8 @@ Ruled out:
 
 ## T1. Drawing engine
 
+**Superseded by T2 (2026-11-01).** Kept for the reasoning.
+
 **Decided:** 2026-10-17. **p5.brush with its built-in brushes**, following [draw-your-attention](https://draw-your-attention.vercel.app/). We won't design custom brushes.
 
 | Option | Trade-off |
@@ -479,24 +484,53 @@ Ruled out:
 
 ---
 
+## T2. Canvas 2D rebuild, with the palette prototype's brushes and layers
+
+**Decided:** 2026-11-01, Ajia. Replaces T1: **no more p5.** The app now uses the same stack as [paletteprototype](https://amg2318.github.io/paletteprototype/): React, TypeScript, Vite, and Canvas 2D.
+
+**What came over from the palette prototype**
+- **Brushes:** pen, pencil, marker, soft, spray, erase. Charcoal and the p5 textures are gone. Stylus pressure now counts, with palm rejection once a stylus is in use.
+- **Brush settings:** swatches, plus Size and Opacity sliders. Opacity is per stroke.
+- **Layers:** thumbnail, name, visibility checkbox, hold-and-drag to reorder, swipe left for Group/Duplicate/Delete, swipe right to multi-select, and groups. **Per-layer opacity is gone**, and so is the 8-layer cap.
+- **Not brought over:** variants. Timeline forks stay the only way to branch, so there aren't two competing branching models.
+
+**What stayed Rewind's**
+- Version rules (Q1), read-only past and forking (Q2), fork rows (Q7), and undo reaching only the version that's recording (P1).
+
+**How history works now**
+- **Stroke record:** `{tool, color, width, opacity, layerId, seed, points: [{x, y, p}], t0, t1}`. Brushes draw their randomness from the stroke's seed, so a replay lands on the same pixels as the live stroke. Live and replay share one code path.
+- **Keyframes:** a closing version saves the pixels of only the layers it changed, plus the layer stack at that moment. A layer's pixels at any version come from its latest keyframe at or before that version.
+- **Scrubbing:** restores each layer from its keyframe, replays the strokes up to the playhead, and composites with that version's stack. It uses separate canvases, so the live layers aren't touched.
+- **Undo:** restores the layer's latest keyframe and replays what's left. **Forks and branch switches** reload every layer from keyframes, because branches share layer ids but not pixels.
+- Everything is synchronous, so the frame-by-frame queues T1's gotchas needed are gone.
+
+**Working choices**
+- **What closes a version:** duplicating a layer or group and deleting a group close it too, since they change the set of layers. Reorder, visibility, and grouping don't, and they aren't undoable. They're saved with the stack when the version closes.
+- **Canvas size:** fixed 1332×1044 document, scaled to fit.
+
+**Known limit:** a keyframe of a full layer is about 5.5 MB. Saving only changed layers limits this, but memory still grows over a long session. Cropping keyframes to the changed area is the next step if it becomes a problem. It's untested on a real iPad so far.
+
+---
+
 ## P1. Canvas page + timeline bar prototype
 
-**Built:** 2026-10-17, in `prototype/`. A clickable HTML mockup that also tests p5.brush.
+**Built:** 2026-10-17. **Rebuilt 2026-11-01 without p5** (see T2), now in `src/` at the repo root. Notes below describe the current build, and older ones that mention p5 are marked.
 
 **Run it**
 ```
-python3 -m http.server 5173 --directory prototype
+npm install
+npm run dev
 ```
-Then open http://localhost:5173. In Claude Code, the `prototype` entry in `.claude/launch.json` does the same.
+Then open the URL it prints. In Claude Code, the `prototype` entry in `.claude/launch.json` does the same. `npm run dev:ipad` also serves it to other devices on your network.
 
 **What it covers**
-- **Canvas page:** color + size rail (left), 6 built-in p5.brush brushes in a tray (bottom), layers with hide, opacity, and delete (right), following Ajia's lo-fi sketch.
+- **Canvas page:** tool rail and color/size/opacity rail (left), layers panel (right). Brushes and layers come from the palette prototype (T2).
 - **Timeline bar:** Fusion-style transport (⏮ ◀ ▶ ▶| ⏭) and equal-width version chips that scroll sideways. Each chip shows its most-used tool icon, and its fill shows edit size relative to the biggest version. Hovering shows time, stroke count, % of canvas, tools and sizes, and what closed the version.
-- **Versions** close after a pause, a time cap, or a layer add/delete. Under **⚙ Mock settings**, "demo timing" shortens these to a 4s pause and a 30s cap, so you can see it working quickly.
+- **Versions** close after a pause, a time cap, or a layer add/delete. Under **Settings**, "demo timing" shortens these to a 4s pause and a 30s cap, so you can see it working quickly.
 - **Scrubbing** moves stroke by stroke inside a version, and the past is shown full-size on the canvas with a "Viewing v3 · stroke 4/8 · Back to now" banner (Q2). ▶ plays the whole process as a timelapse.
-- **Empty state:** the bar is always visible. The hint can be turned on or off in Mock settings, so both versions can be compared (Q2).
+- **Empty state:** the bar is always visible. The hint can be turned on or off in Settings, so both versions can be compared (Q2).
 - **Tool layout (2026-10-29, Ajia):** brushes moved from the bottom tray into a vertical column on the far left edge, with the color/size rail to its right. Undo and redo buttons sit at the bottom of the rail (also ⌘Z / ⇧⌘Z).
-- **Undo scope (working choice):** undo and redo only reach strokes in the version that's still recording. Once a version closes (pause, time cap, layer change), it's history, and you rewind on the timeline instead. Otherwise undo would quietly rewrite saved versions. Undone strokes aren't recorded. Undo works by clearing the stroke's layer and replaying the strokes left on it.
+- **Undo scope (working choice):** undo and redo only reach strokes in the version that's still recording. Once a version closes (pause, time cap, layer change), it's history, and you rewind on the timeline instead. Otherwise undo would quietly rewrite saved versions. Undone strokes aren't recorded. Undo works by restoring the stroke's layer from its last keyframe and replaying the strokes left on it (T2).
 - **Fork rows (2026-10-29, Q7):** each branch is its own row on the bar, connected to its fork point. Tapping another row switches branches. This replaced the fork notch and the branch picker, and the History button is gone.
-- **Read-only past + forking (2026-10-29):** drawing on a past version shows a notice. **Fork from here** (in the notice or the banner) starts a new branch at the playhead, down to the stroke. The new branch shares the earlier versions, and its layers are rebuilt by replaying recorded strokes (one layer per frame, per T1's gotchas). 
-- **Not built:** pan/zoom, eraser, saving between reloads, the projects page, the first-run popup, marks. Export saves only the final PNG.
+- **Read-only past + forking (2026-10-29):** drawing on a past version shows a notice. **Fork from here** (in the notice or the banner) starts a new branch at the playhead, down to the stroke. The new branch shares the earlier versions, and its layers are loaded from keyframes (T2).
+- **Not built:** pan/zoom, saving between reloads, the projects page, the first-run popup, marks. Export saves only the final PNG.
