@@ -3,6 +3,7 @@ import { GRID, posToTarget, timelineRows, type Row, type Version } from '../hist
 import type { Tool } from '../model';
 import { useStore } from '../store';
 import { ToolIcon, TOOLS } from './ToolIcon';
+import { TrackScrollbar } from './TrackScrollbar';
 
 // Keep in step with --chip-w and --chip-gap in styles.css.
 const CHIP_W = 44;
@@ -11,6 +12,7 @@ const PITCH = CHIP_W + CHIP_GAP;
 const CHIP_H = 48;
 const ROW_H = 56;
 const ROW_GAP = 8;
+const FOLLOW_MARGIN = 56; // room for a whole chip when following the playhead
 
 const dominantTool = (v: Version) => {
   const top = (Object.entries(v.tools) as [Tool, number][]).sort((a, b) => b[1] - a[1])[0];
@@ -97,14 +99,17 @@ export function Timeline() {
     if (top < sc.scrollTop || top + ROW_H > sc.scrollTop + sc.clientHeight) sc.scrollTop = top;
   }, [currentRow, rows.length]);
 
-  // keep the playhead on screen during playback
+  // Follow the playhead during playback, and the "now" chip while live. Scrolling
+  // by hand changes neither, so the scrollbar stays put until one of them moves.
   useEffect(() => {
-    if (!playing) return;
+    if (dragging || (!playing && pos !== null)) return;
     const sc = scrollRef.current!;
-    if (playheadX < sc.scrollLeft + 40 || playheadX > sc.scrollLeft + sc.clientWidth - 40) {
-      sc.scrollLeft = playheadX - sc.clientWidth / 2;
-    }
-  }, [playing, playheadX]);
+    const left = sc.scrollLeft + FOLLOW_MARGIN;
+    const right = sc.scrollLeft + sc.clientWidth - FOLLOW_MARGIN;
+    if (playheadX >= left && playheadX <= right) return;
+    if (playing) sc.scrollLeft = playheadX - sc.clientWidth / 2;
+    else sc.scrollLeft += playheadX < left ? playheadX - left : playheadX - right;
+  }, [playing, pos === null, playheadX, strokes]);
 
   const at = (e: PointerEvent) => {
     const r = chipsRef.current!.getBoundingClientRect();
@@ -146,7 +151,8 @@ export function Timeline() {
         <button title="Jump to now (esc)" onClick={() => store.setPos(null, { fromUser: true })}>⏭</button>
       </div>
 
-      <div className="track-scroll" ref={scrollRef}>
+      <div className="track-area">
+      <div className="track-scroll" ref={scrollRef} onScroll={() => setHover(null)}>
         <div
           className={`track ${dragging ? 'is-dragging' : ''}`}
           onPointerDown={onPointerDown}
@@ -154,7 +160,7 @@ export function Timeline() {
           onPointerUp={() => setDragging(false)}
           onPointerCancel={() => setDragging(false)}
         >
-          <svg className="connectors" width="100%" height={rows.length * (ROW_H + ROW_GAP)}>
+          <svg className="connectors" width="100%" height={rows.length * (ROW_H + ROW_GAP) - ROW_GAP}>
             {rows.slice(1).map((row, j) => (
               <path key={row.branch.id} d={connectorPath(row, j + 1)} />
             ))}
@@ -198,6 +204,8 @@ export function Timeline() {
           </div>
         </div>
         {showHint && closed === 0 && <div className="hint">Your process is being saved as you draw. Drag here later to rewind.</div>}
+      </div>
+      <TrackScrollbar target={scrollRef} />
       </div>
 
       <div className="timeline-side">

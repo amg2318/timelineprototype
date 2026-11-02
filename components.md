@@ -48,7 +48,7 @@ Two vertical columns: the brush column against the left edge of the screen, then
 - **Branch row:** one strip per branch (decisions.md Q7). A fork's row starts under its split point and shows the branch name. The current branch's row has a darker border
 - **Fork connector:** the line from the version a fork came from down into the fork's row
 - **Rows toggle:** shown once there's a fork. Expanded shows every branch's row; collapsed shows only the current branch's. Past main + 2 fork rows, the row area scrolls
-- **Scrolling:** what the ends of the bar look like when the history is too long to fit
+- **Scrollbar:** a draggable bar under the rows, shown when the history is too long to fit. The track follows the playhead during playback and the "now" chip while live; otherwise it stays where it was scrolled *(working choice)*
 
 ## 7. Messages and overlays
 - **Past-version banner:** merged into the timeline's playhead label (see 6)

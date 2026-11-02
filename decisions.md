@@ -113,6 +113,8 @@ These are captured per version as **metadata** — shown in the history UI, neve
 | Group by session | Each session reads like a chapter, but adds expand/collapse to design and build |
 | Pinch / zoom | Flexible, but harder to build and to discover |
 
+**Working choice (2026-11-01, Ajia): a scrollbar, plus following during playback and at "now".** One-finger drag on the track stays the scrub, so the scrollbar is how you scroll by hand. The track follows the playhead during playback and the "now" chip while live (new strokes, new versions, jump to now). Stepping and scrubbing in the past don't scroll it.
+
 **Decided (for now): A past version shows on the full canvas.**
 
 ```
